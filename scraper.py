@@ -12,7 +12,6 @@ from selenium.webdriver.support import expected_conditions as EC
 def setup_driver():
     options = Options()
 
-    # WAJIB STREAMLIT
     options.binary_location = "/usr/bin/chromium"
 
     options.add_argument("--headless=new")
@@ -21,7 +20,7 @@ def setup_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
 
-    # 🔥 ANTI DETECT
+    # Anti detect
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
@@ -35,7 +34,6 @@ def setup_driver():
         options=options
     )
 
-    # 🔥 HILANGKAN DETEKSI SELENIUM
     driver.execute_script(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     )
@@ -43,9 +41,9 @@ def setup_driver():
     return driver
 
 
-def scrape_google_maps(query, lokasi_target=None):
+def scrape_google_maps(query):
 
-    for attempt in range(3):  # retry 3x
+    for attempt in range(3):
         driver = None
 
         try:
@@ -53,85 +51,108 @@ def scrape_google_maps(query, lokasi_target=None):
 
             driver = setup_driver()
 
-            url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
+            time.sleep(random.uniform(2, 4))
+
+            url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}?hl=id"
             driver.get(url)
 
-            time.sleep(7)  # WAJIB
+            time.sleep(7)
 
             wait = WebDriverWait(driver, 25)
 
-            # 🔥 CEK BLOCK GOOGLE
+            # cek blok
             if "unusual traffic" in driver.page_source.lower():
                 print("❌ TERBLOCK GOOGLE")
                 return []
 
             # =========================
-            # SCROLL AREA
+            # COBA AMBIL FEED
             # =========================
             try:
                 scrollable_div = wait.until(
                     EC.presence_of_element_located((By.XPATH, '//div[@role="feed"]'))
                 )
-            except:
-                print("❌ FEED TIDAK DITEMUKAN")
-                print(driver.page_source[:1000])  # DEBUG
-                return []
 
-            # SCROLL DALAM
-            for _ in range(10):
-                driver.execute_script(
-                    "arguments[0].scrollTop = arguments[0].scrollHeight", scrollable_div
-                )
-                time.sleep(2)
+                # scroll
+                for _ in range(10):
+                    driver.execute_script(
+                        "arguments[0].scrollTop = arguments[0].scrollHeight", scrollable_div
+                    )
+                    time.sleep(2)
 
-            # =========================
-            # AMBIL LIST ITEM (FALLBACK)
-            # =========================
-            items = driver.find_elements(By.CLASS_NAME, "hfpxzc")
+                items = driver.find_elements(By.CLASS_NAME, "hfpxzc")
 
-            # 🔥 FALLBACK kalau kosong
-            if len(items) == 0:
-                print("⚠️ hfpxzc kosong → pakai fallback")
-                items = driver.find_elements(By.CSS_SELECTOR, "a[href*='/place/']")
+                if len(items) == 0:
+                    items = driver.find_elements(By.CSS_SELECTOR, "a[href*='/place/']")
 
-            print(f"📊 ITEM DITEMUKAN: {len(items)}")
+                print(f"📊 ITEM DITEMUKAN: {len(items)}")
 
-            data = []
+                data = []
 
-            for i, item in enumerate(items[:10]):  # limit biar stabil
-                try:
-                    driver.execute_script("arguments[0].click();", item)
-                    time.sleep(3)
-
-                    nama = "N/A"
-                    alamat = "N/A"
-
+                for item in items[:10]:
                     try:
-                        nama = driver.find_element(By.CSS_SELECTOR, "h1.DUwDvf").text
+                        driver.execute_script("arguments[0].click();", item)
+                        time.sleep(3)
+
+                        nama = "N/A"
+                        alamat = "N/A"
+
+                        try:
+                            nama = driver.find_element(By.CSS_SELECTOR, "h1.DUwDvf").text
+                        except:
+                            pass
+
+                        detail = driver.find_elements(By.CLASS_NAME, "Io6YTe")
+
+                        for d in detail:
+                            if "Jl" in d.text:
+                                alamat = d.text
+
+                        if nama != "N/A":
+                            data.append({
+                                "Nama Perusahaan": nama,
+                                "Alamat": alamat
+                            })
+                            print(f"✅ {nama}")
+
+                    except Exception as e:
+                        print("⚠️ ERROR ITEM:", e)
+
+                driver.quit()
+
+                if len(data) > 0:
+                    return data
+
+            # =========================
+            # 🔥 FALLBACK MODE
+            # =========================
+            except:
+                print("❌ FEED TIDAK DITEMUKAN → FALLBACK")
+
+                if "google.com/search" in driver.current_url:
+                    print("⚠️ Redirect ke Google Search")
+
+                items = driver.find_elements(By.CSS_SELECTOR, "a")
+
+                data = []
+
+                for a in items:
+                    try:
+                        href = a.get_attribute("href")
+                        text = a.text
+
+                        if href and "/maps/place/" in href and text.strip() != "":
+                            data.append({
+                                "Nama Perusahaan": text.strip(),
+                                "Alamat": "N/A"
+                            })
                     except:
                         pass
 
-                    detail = driver.find_elements(By.CLASS_NAME, "Io6YTe")
+                print(f"📊 FALLBACK DATA: {len(data)}")
 
-                    for d in detail:
-                        txt = d.text
-                        if "Jl" in txt:
-                            alamat = txt
+                driver.quit()
 
-                    if nama != "N/A":
-                        data.append({
-                            "Nama Perusahaan": nama,
-                            "Alamat": alamat
-                        })
-
-                        print(f"✅ {nama}")
-
-                except Exception as e:
-                    print("⚠️ ERROR ITEM:", e)
-
-            driver.quit()
-
-            if len(data) > 0:
                 return data
 
         except Exception as e:
