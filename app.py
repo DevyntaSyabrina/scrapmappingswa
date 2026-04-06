@@ -341,7 +341,7 @@ if st.button("🚀 MULAI SCRAPING", use_container_width=True):
             st.markdown("### 📊 Hasil Data Scraper")
             st.markdown(f"**Total Data Ditemukan:** {len(all_results_df)} Entitas")
         
-        st.dataframe(all_results_df, use_container_width=True)
+        st.dataframe(df, width="stretch")
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             all_results_df.to_excel(writer, index=False, sheet_name='Data Scraper')
