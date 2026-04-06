@@ -211,7 +211,7 @@ with st.sidebar:
         enable_nearby = st.checkbox("📡 Aktifkan Nearby", value=True)
 
     st.markdown("---")
-    max_workers = st.slider("Jumlah Robot (Threads)", 1, 4, 3)
+    max_workers = 1
 
 # --- 4. TAMPILAN UTAMA (HEADER BARU) ---
 # Ukuran dikembalikan besar (2.6rem) tapi font-weight semi-bold (600) agar tidak terlihat norak
@@ -230,25 +230,26 @@ def process_single_area(area_name, keyword, mode_type, parent_area, prov_name):
     try:
         if mode_type == "🇮🇩 ID Nasional (Publik Sektor)":
             query = f"{keyword} di {area_name}"
-            lokasi_filter = area_name
-            status_label = "Nasional"
         elif mode_type == "📍 Satu Provinsi Full (Semua Kota/Kab)":
             query = f"{keyword} di {area_name}, {prov_name}"
-            lokasi_filter = area_name
-            status_label = "Provinsi Full"
-        else: 
+        else:
             query = f"{keyword} di Kecamatan {area_name}, {parent_area}"
-            lokasi_filter = area_name
-            status_label = "Per Kecamatan"
 
-        hasil = scrape_google_maps(query, lokasi_target=lokasi_filter)
+        st.write(f"🔎 Query: {query}")
+
+        hasil = scrape_google_maps(query, lokasi_target=area_name)
+
+        st.write(f"📊 Hasil ditemukan: {len(hasil)}")
+
         if hasil:
             df = pd.DataFrame(hasil)
             df['Lokasi/Wilayah'] = area_name
-            df['Status'] = status_label
             return df
-    except Exception: pass
-    return pd.DataFrame() 
+
+    except Exception as e:
+        st.error(f"❌ Error process area: {e}")
+
+    return pd.DataFrame()
 
 # --- 5. LOG DISPLAY ---
 # Menghilangkan background putih dan mengubah teks keyword menjadi Kuning Terang agar kontras
@@ -331,6 +332,7 @@ if st.button("🚀 MULAI SCRAPING", use_container_width=True):
     detail_text.markdown("<span style='font-size: 1rem; font-weight: 500;'>✅ Proses Selesai!</span>", unsafe_allow_html=True)
     status_container.success("✅ Ekstraksi Data Berhasil Diselesaikan!")
     
+    st.write("DEBUG TOTAL DATA:", len(all_results_df))
     if not all_results_df.empty:
         all_results_df = all_results_df.drop_duplicates(subset=['Nama Perusahaan', 'Alamat'])
         st.markdown('<div class="result-container">', unsafe_allow_html=True)
