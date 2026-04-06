@@ -1,8 +1,5 @@
 import time
-import pandas as pd
-import re 
-import random 
-import os
+import random
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -11,163 +8,134 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# --- USER AGENTS ---
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko Firefox/121.0"
-]
 
-# =========================================================
-# ✅ FIX DRIVER (WAJIB UNTUK STREAMLIT CLOUD)
-# =========================================================
 def setup_driver():
     options = Options()
+
+    # WAJIB STREAMLIT
+    options.binary_location = "/usr/bin/chromium"
 
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
+
+    # 🔥 ANTI DETECT
     options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
 
-    # random user agent
-    options.add_argument(f"user-agent={random.choice(USER_AGENTS)}")
+    options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+    )
 
-    # ✅ path wajib untuk streamlit cloud
-    options.binary_location = "/usr/bin/chromium"
+    driver = webdriver.Chrome(
+        service=Service("/usr/bin/chromedriver"),
+        options=options
+    )
 
-    try:
-        service = Service("/usr/bin/chromedriver")
-        driver = webdriver.Chrome(service=service, options=options)
-        driver.set_page_load_timeout(60)
-        return driver
-    except Exception as e:
-        print("❌ ERROR DRIVER:", e)
-        raise
+    # 🔥 HILANGKAN DETEKSI SELENIUM
+    driver.execute_script(
+        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    )
 
-
-# --- DELAY ---
-def human_delay(a=1.0, b=2.0):
-    time.sleep(random.uniform(a, b))
+    return driver
 
 
-# =========================================================
-# 🔍 EMAIL FILTER
-# =========================================================
-def find_email_pattern(text, company):
-    if not text:
-        return "N/A"
-    
-    pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-    emails = re.findall(pattern, text)
-
-    if emails:
-        return list(set(emails))[0]
-
-    return "N/A"
-
-
-# =========================================================
-# 🌐 SCRAPER DENGAN RETRY + DEBUG
-# =========================================================
 def scrape_google_maps(query, lokasi_target=None):
 
-    for attempt in range(2):  # ✅ retry 2x
+    for attempt in range(3):  # retry 3x
         driver = None
 
         try:
-            print(f"\n🔎 START SCRAPING: {query}")
+            print(f"\n🔎 SCRAPING: {query}")
+
             driver = setup_driver()
 
-            driver.get(f"https://www.google.com/maps/search/{query.replace(' ', '+')}")
-            wait = WebDriverWait(driver, 20)
+            url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
+            driver.get(url)
 
-            # tunggu sidebar
-            scrollable_div = wait.until(
-                EC.presence_of_element_located((By.XPATH, '//div[@role="feed"]'))
-            )
+            time.sleep(7)  # WAJIB
 
-            # ============================
-            # 🔽 SCROLL
-            # ============================
-            last_height = driver.execute_script(
-                "return arguments[0].scrollHeight", scrollable_div
-            )
+            wait = WebDriverWait(driver, 25)
 
+            # 🔥 CEK BLOCK GOOGLE
+            if "unusual traffic" in driver.page_source.lower():
+                print("❌ TERBLOCK GOOGLE")
+                return []
+
+            # =========================
+            # SCROLL AREA
+            # =========================
+            try:
+                scrollable_div = wait.until(
+                    EC.presence_of_element_located((By.XPATH, '//div[@role="feed"]'))
+                )
+            except:
+                print("❌ FEED TIDAK DITEMUKAN")
+                print(driver.page_source[:1000])  # DEBUG
+                return []
+
+            # SCROLL DALAM
             for _ in range(10):
                 driver.execute_script(
                     "arguments[0].scrollTop = arguments[0].scrollHeight", scrollable_div
                 )
-                human_delay(1.5, 2.5)
+                time.sleep(2)
 
-                new_height = driver.execute_script(
-                    "return arguments[0].scrollHeight", scrollable_div
-                )
-
-                if new_height == last_height:
-                    break
-
-                last_height = new_height
-
-            # ============================
-            # 📊 AMBIL DATA
-            # ============================
+            # =========================
+            # AMBIL LIST ITEM (FALLBACK)
+            # =========================
             items = driver.find_elements(By.CLASS_NAME, "hfpxzc")
-            print(f"📍 Total ditemukan: {len(items)}")
+
+            # 🔥 FALLBACK kalau kosong
+            if len(items) == 0:
+                print("⚠️ hfpxzc kosong → pakai fallback")
+                items = driver.find_elements(By.CSS_SELECTOR, "a[href*='/place/']")
+
+            print(f"📊 ITEM DITEMUKAN: {len(items)}")
 
             data = []
 
-            for i, item in enumerate(items[:20]):  # batasi 20 dulu biar stabil
+            for i, item in enumerate(items[:10]):  # limit biar stabil
                 try:
-                    driver.execute_script("arguments[0].scrollIntoView();", item)
                     driver.execute_script("arguments[0].click();", item)
+                    time.sleep(3)
 
-                    human_delay(1, 2)
-
-                    row = {
-                        "Nama Perusahaan": "N/A",
-                        "Alamat": "N/A",
-                        "Telepon": "N/A",
-                        "Website": "N/A",
-                        "Email": "N/A",
-                    }
+                    nama = "N/A"
+                    alamat = "N/A"
 
                     try:
-                        row["Nama Perusahaan"] = driver.find_element(
-                            By.CSS_SELECTOR, "h1.DUwDvf"
-                        ).text
+                        nama = driver.find_element(By.CSS_SELECTOR, "h1.DUwDvf").text
                     except:
                         pass
 
-                    details = driver.find_elements(By.CLASS_NAME, "Io6YTe")
+                    detail = driver.find_elements(By.CLASS_NAME, "Io6YTe")
 
-                    for d in details:
+                    for d in detail:
                         txt = d.text
-
                         if "Jl" in txt:
-                            row["Alamat"] = txt
-                        elif txt.startswith("+62"):
-                            row["Telepon"] = txt
-                        elif "." in txt and " " not in txt:
-                            row["Website"] = txt
+                            alamat = txt
 
-                    # email dari halaman
-                    body = driver.page_source
-                    row["Email"] = find_email_pattern(body, row["Nama Perusahaan"])
+                    if nama != "N/A":
+                        data.append({
+                            "Nama Perusahaan": nama,
+                            "Alamat": alamat
+                        })
 
-                    print(f"✅ {row['Nama Perusahaan']}")
-                    data.append(row)
+                        print(f"✅ {nama}")
 
                 except Exception as e:
                     print("⚠️ ERROR ITEM:", e)
-                    continue
 
             driver.quit()
-            return data
+
+            if len(data) > 0:
+                return data
 
         except Exception as e:
-            print(f"❌ ERROR SCRAPING ATTEMPT {attempt+1}:", e)
+            print(f"❌ ERROR ATTEMPT {attempt+1}:", e)
 
             try:
                 if driver:
@@ -175,7 +143,7 @@ def scrape_google_maps(query, lokasi_target=None):
             except:
                 pass
 
-            time.sleep(3)
+            time.sleep(5)
 
-    print("❌ GAGAL TOTAL SCRAPING")
+    print("❌ GAGAL TOTAL")
     return []
