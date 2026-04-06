@@ -21,29 +21,29 @@ USER_AGENTS = [
 def setup_driver():
     options = Options()
 
-    # WAJIB untuk server / streamlit cloud
-    options.add_argument("--headless=new")  
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-
-    # Anti detection
     options.add_argument("--disable-blink-features=AutomationControlled")
 
-    # Random user agent
+    # USER AGENT
     random_agent = random.choice(USER_AGENTS)
     options.add_argument(f"user-agent={random_agent}")
 
+    # ✅ PENTING: path chrome untuk streamlit cloud
+    options.binary_location = "/usr/bin/chromium"
+
     try:
-        service = Service(ChromeDriverManager().install())
+        service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=options)
         driver.set_page_load_timeout(60)
         return driver
     except Exception as e:
         print("❌ Gagal start driver:", e)
         raise
-
+        
 # --- HELPER: JEDA MANUSIA ---
 def human_delay(min_seconds=1.0, max_seconds=2.0):
     time.sleep(random.uniform(min_seconds, max_seconds))
